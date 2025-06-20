@@ -4,6 +4,7 @@ const userRoutes = require('./routes/userRoutes')
 const testRoutes = require('./routes/testRoutes')
 const authRoutes = require('./routes/authRoutes') 
 const { authenticate } = require('./middlewares/authMiddleware')
+const agendamentoRoutes = require('./routes/agendamentoRoutes');
 
 // Cria a aplicação Express
 const app = express()
@@ -16,6 +17,7 @@ app.use(express.json())
 app.use('/api/users', userRoutes) // Rotas de usuário
 app.use('/auth', authRoutes) // Rotas de autenticação
 app.use('/api/test', testRoutes) // Rotas de teste (Supabase)
+app.use('/api/agendamentos', agendamentoRoutes);
 
 app.get('/protegido', authenticate, (req, res) => {
   res.json({ 

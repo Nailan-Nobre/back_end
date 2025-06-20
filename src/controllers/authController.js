@@ -59,12 +59,12 @@ exports.signUp = async (req, res) => {
 
   } catch (error) {
     console.error("Erro no cadastro:", error)
-    
+
     // Tenta limpar o usuário criado no auth se falhar na tabela usuarios
     if (email) {
       const { data: { users } } = await supabase.auth.admin.listUsers()
       const userToDelete = users.find(u => u.email === email)
-      
+
       if (userToDelete) {
         await supabase.auth.admin.deleteUser(userToDelete.id)
           .catch(e => console.error("Falha ao limpar usuário:", e))
@@ -153,6 +153,24 @@ exports.getUserProfile = async (req, res) => {
   }
 }
 
+//Buscar usuário por ID
+exports.getUserById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data: user, error } = await supabase
+      .from('usuarios')
+      .select('id, nome, foto, tipo')
+      .eq('id', id)
+      .single();
+
+    if (error || !user) throw error || new Error('Usuário não encontrado');
+
+    res.json(user);
+  } catch (error) {
+    res.status(404).json({ error: 'Usuário não encontrado' });
+  }
+}
+
 // Atualizar perfil
 exports.updateProfile = async (req, res) => {
   const updates = req.body
@@ -178,5 +196,62 @@ exports.updateProfile = async (req, res) => {
       error: "Erro ao atualizar perfil",
       details: error.message
     })
+  }
+}
+
+// Busca todas as manicures (dados públicos)
+exports.getManicures = async (req, res) => {
+  try {
+    const { data: manicures, error } = await supabase
+      .from('usuarios')
+      .select('id, nome, foto, telefone, estado, cidade, rua, email')
+      .eq('tipo', 'MANICURE');
+
+    if (error) throw error;
+
+    // Retorna exatamente como vem do banco (Supabase já retorna null para campos não preenchidos)
+    res.json({
+      success: true,
+      manicures: manicures || []
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: "Erro ao buscar profissionais",
+      details: error.message
+    });
+  }
+}
+
+// Buscar manicure por ID
+exports.getManicureById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Verifica se o ID é um UUID válido
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
+      return res.status(400).json({ error: 'ID inválido' });
+    }
+
+    const { data: manicure, error } = await supabase
+      .from('usuarios')
+      .select('*')
+      .eq('id', id)
+      .eq('tipo', 'MANICURE')
+      .single();
+
+    // Remove o campo senha antes de retornar
+    if (manicure && manicure.senha) {
+      delete manicure.senha;
+    }
+
+    if (error) throw error;
+    if (!manicure) return res.status(404).json({ error: 'Manicure não encontrada' });
+
+    res.json(manicure);
+  } catch (error) {
+    console.error('Erro ao buscar manicure:', error);
+    res.status(500).json({ error: 'Erro interno ao buscar manicure' });
   }
 }
