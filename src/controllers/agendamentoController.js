@@ -73,11 +73,12 @@ exports.criarAgendamento = async (req, res) => {
   }
 };
 
-// Listar agendamentos do usuário
-exports.listarAgendamentos = async (req, res) => {
+// Listar agendamentos do usuário logado
+exports.listarAgendamentosUsuario = async (req, res) => {
   const userId = req.user.id;
 
   try {
+    // Busca agendamentos onde o usuário é cliente OU manicure
     const { data: agendamentos, error } = await supabase
       .from('agendamentos')
       .select(`
@@ -86,7 +87,7 @@ exports.listarAgendamentos = async (req, res) => {
         servico,
         status,
         observacoes,
-        cliente:cliente_id (id, nome),
+        cliente:cliente_id (id, nome, foto),
         manicure:manicure_id (id, nome, foto)
       `)
       .or(`cliente_id.eq.${userId},manicure_id.eq.${userId}`)
@@ -94,16 +95,24 @@ exports.listarAgendamentos = async (req, res) => {
 
     if (error) throw error;
 
+    // Separa agendamentos como cliente e como manicure
+    const comoCliente = agendamentos.filter(a => a.cliente.id === userId);
+    const comoManicure = agendamentos.filter(a => a.manicure.id === userId);
+
     res.json({
       success: true,
-      agendamentos
+      agendamentos: {
+        comoCliente,
+        comoManicure
+      }
     });
 
   } catch (error) {
     console.error('Erro ao listar agendamentos:', error);
     res.status(500).json({ 
       success: false, 
-      error: 'Erro ao listar agendamentos' 
+      error: 'Erro ao listar agendamentos',
+      details: error.message 
     });
   }
 };

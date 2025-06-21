@@ -5,6 +5,6 @@ const { authenticate } = require('../middlewares/authMiddleware');
 
 // Rotas protegidas por autenticação
 router.post('/', authenticate, agendamentoController.criarAgendamento);
-router.get('/', authenticate, agendamentoController.listarAgendamentos);
+router.get('/meus-agendamentos', authenticate, agendamentoController.listarAgendamentosUsuario);
 
 module.exports = router;
