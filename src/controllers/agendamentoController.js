@@ -15,9 +15,9 @@ exports.criarAgendamento = async (req, res) => {
       .single();
 
     if (manicureError || !manicure) {
-      return res.status(404).json({ 
-        success: false, 
-        error: 'Manicure não encontrada' 
+      return res.status(404).json({
+        success: false,
+        error: 'Manicure não encontrada'
       });
     }
 
@@ -31,9 +31,9 @@ exports.criarAgendamento = async (req, res) => {
       .single();
 
     if (!conflitoError && conflito) {
-      return res.status(409).json({ 
-        success: false, 
-        error: 'Horário já agendado para esta manicure' 
+      return res.status(409).json({
+        success: false,
+        error: 'Horário já agendado para esta manicure'
       });
     }
 
@@ -48,12 +48,13 @@ exports.criarAgendamento = async (req, res) => {
         observacoes
       })
       .select(`
-        id,
-        data_hora,
-        servico,
-        observacoes,
-        status,
-        manicure:manicure_id (id, nome, foto)
+         id,
+         data_hora,
+         servico,
+         observacoes,
+         status,
+         cliente:cliente_id (id, nome, foto),
+         manicure:manicure_id (id, nome, foto)
       `);
 
     if (error) throw error;
@@ -65,10 +66,10 @@ exports.criarAgendamento = async (req, res) => {
 
   } catch (error) {
     console.error('Erro ao criar agendamento:', error);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       error: 'Erro ao criar agendamento',
-      details: error.message 
+      details: error.message
     });
   }
 };
@@ -109,10 +110,117 @@ exports.listarAgendamentosUsuario = async (req, res) => {
 
   } catch (error) {
     console.error('Erro ao listar agendamentos:', error);
-    res.status(500).json({ 
-      success: false, 
+    res.status(500).json({
+      success: false,
       error: 'Erro ao listar agendamentos',
-      details: error.message 
+      details: error.message
+    });
+  }
+};
+
+
+// Listar agendamentos para manicure (solicitações pendentes)
+exports.listarSolicitacoesManicure = async (req, res) => {
+  const manicureId = req.user.id;
+
+  try {
+    const { data: agendamentos, error } = await supabase
+      .from('agendamentos')
+      .select(`
+        id,
+        data_hora,
+        servico,
+        status,
+        observacoes,
+        cliente_id,
+        cliente:cliente_id (id, nome, foto)
+      `)
+      .eq('manicure_id', manicureId)
+      .eq('status', 'pendente')
+      .order('data_hora', { ascending: true });
+
+    if (error) throw error;
+
+    // Processa os dados para garantir estrutura consistente
+    const resultados = agendamentos.map(agendamento => ({
+      ...agendamento,
+      cliente: agendamento.cliente_id || {
+        id: agendamento.cliente_id,
+        nome: 'Cliente',
+        foto: 'imagens/perfil_cliente.png'
+      }
+    }));
+
+    res.json({
+      success: true,
+      agendamentos: resultados
+    });
+
+  } catch (error) {
+    console.error('Erro ao listar solicitações:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao listar solicitações',
+      details: error.message
+    });
+  }
+};
+
+// Atualizar status do agendamento (aceitar/recusar)
+exports.atualizarStatusAgendamento = async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  const manicureId = req.user.id;
+
+  try {
+    // Verifica se o agendamento pertence à manicure
+    const { data: agendamento, error: agendamentoError } = await supabase
+      .from('agendamentos')
+      .select('manicure_id')
+      .eq('id', id)
+      .single();
+
+    if (agendamentoError || !agendamento) {
+      return res.status(404).json({
+        success: false,
+        error: 'Agendamento não encontrado'
+      });
+    }
+
+    if (agendamento.manicure_id !== manicureId) {
+      return res.status(403).json({
+        success: false,
+        error: 'Você não tem permissão para alterar este agendamento'
+      });
+    }
+
+    // Atualiza o status
+    const { data: updated, error: updateError } = await supabase
+      .from('agendamentos')
+      .update({ status })
+      .eq('id', id)
+      .select(`
+        id,
+        data_hora,
+        servico,
+        status,
+        observacoes,
+        cliente:cliente_id (id, nome, foto)
+      `);
+
+    if (updateError) throw updateError;
+
+    res.json({
+      success: true,
+      agendamento: updated[0]
+    });
+
+  } catch (error) {
+    console.error('Erro ao atualizar agendamento:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao atualizar agendamento',
+      details: error.message
     });
   }
 };
