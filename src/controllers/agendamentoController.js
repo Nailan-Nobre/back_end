@@ -147,7 +147,7 @@ exports.listarSolicitacoesManicure = async (req, res) => {
       cliente: agendamento.cliente_id || {
         id: agendamento.cliente_id,
         nome: 'Cliente',
-        foto: 'imagens/perfil_cliente.png'
+        foto: 'imagens/user.png'
       }
     }));
 
@@ -161,6 +161,151 @@ exports.listarSolicitacoesManicure = async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Erro ao listar solicitações',
+      details: error.message
+    });
+  }
+};
+
+exports.listarAgendamentosConfirmados = async (req, res) => {
+  const userId = req.user.id;
+
+  try {
+    // Busca agendamentos confirmados onde o usuário é cliente OU manicure
+    const { data: agendamentos, error } = await supabase
+      .from('agendamentos')
+      .select(`
+        id,
+        data_hora,
+        servico,
+        status,
+        observacoes,
+        cliente:cliente_id (id, nome, foto),
+        manicure:manicure_id (id, nome, foto)
+      `)
+      .or(`cliente_id.eq.${userId},manicure_id.eq.${userId}`)
+      .eq('status', 'confirmado')
+      .order('data_hora', { ascending: true });
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      agendamentos
+    });
+
+  } catch (error) {
+    console.error('Erro ao listar agendamentos confirmados:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao listar agendamentos confirmados',
+      details: error.message
+    });
+  }
+};
+
+exports.listarAgendamentosHistorico = async (req, res) => {
+  const userId = req.user.id;
+
+  try {
+    // Busca agendamentos finalizados ou cancelados onde o usuário é cliente OU manicure
+    const { data: agendamentos, error } = await supabase
+      .from('agendamentos')
+      .select(`
+        id,
+        data_hora,
+        servico,
+        status,
+        observacoes,
+        cliente:cliente_id (id, nome, foto),
+        manicure:manicure_id (id, nome, foto)
+      `)
+      .or(`cliente_id.eq.${userId},manicure_id.eq.${userId}`)
+      .in('status', ['concluido', 'cancelado'])
+      .order('data_hora', { ascending: false });
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      agendamentos
+    });
+
+  } catch (error) {
+    console.error('Erro ao listar histórico de agendamentos:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao listar histórico de agendamentos',
+      details: error.message
+    });
+  }
+};
+
+exports.listarAgendamentosEmAndamento = async (req, res) => {
+    const userId = req.user.id;
+    try {
+        const { data: agendamentos, error } = await supabase
+            .from('agendamentos')
+            .select(`
+                id,
+                data_hora,
+                servico,
+                status,
+                observacoes,
+                cliente:cliente_id (id, nome, foto),
+                manicure:manicure_id (id, nome, foto)
+            `)
+            .or(`cliente_id.eq.${userId},manicure_id.eq.${userId}`)
+            .eq('status', 'em_andamento')
+            .order('data_hora', { ascending: true });
+
+        if (error) throw error;
+
+        res.json({
+            success: true,
+            agendamentos
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: 'Erro ao listar agendamentos em andamento',
+            details: error.message
+        });
+    }
+};
+
+exports.listarAgendamentosConcluidos = async (req, res) => {
+  const userId = req.user.id;
+
+  try {
+    // Busca agendamentos finalizados onde o usuário é cliente OU manicure
+    const { data: agendamentos, error } = await supabase
+      .from('agendamentos')
+      .select(`
+        id,
+        data_hora,
+        servico,
+        status,
+        observacoes,
+        cliente:cliente_id (id, nome, foto),
+        manicure:manicure_id (id, nome, foto)
+      `)
+      .or(`cliente_id.eq.${userId},manicure_id.eq.${userId}`)
+      .eq('status', 'concluido')
+      .order('data_hora', { ascending: false });
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      agendamentos
+    });
+
+  } catch (error) {
+    console.error('Erro ao listar agendamentos concluídos:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao listar agendamentos concluídos',
       details: error.message
     });
   }
