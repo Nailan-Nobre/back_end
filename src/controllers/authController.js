@@ -159,7 +159,7 @@ exports.getUserById = async (req, res) => {
     const { id } = req.params;
     const { data: user, error } = await supabase
       .from('usuarios')
-      .select('id, nome, foto, tipo')
+      .select('id, nome, foto, tipo, email, telefone, estado, cidade, rua')
       .eq('id', id)
       .single();
 
