@@ -1,35 +1,24 @@
 const supabase = require('../config/db')
-const { createClient } = require('@supabase/supabase-js')
-const bcrypt = require('bcryptjs')
 
 // Cadastro direto na tabela usuarios
 exports.signUp = async (req, res) => {
   const { email, password, nome, tipo, telefone, estado, cidade } = req.body
 
   try {
-    // 1. Validação básica do e-mail
     if (!email || !email.includes('@')) {
       throw new Error('E-mail inválido')
     }
 
-    // 2. Gera hash da senha
-    const hashedPassword = await bcrypt.hash(password, 10)
-
-    // 3. Cria usuário no sistema de autenticação (sem verificação de e-mail)
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { // Metadados adicionais
-          nome,
-          tipo
-        }
+        data: { nome, tipo }
       }
     })
 
     if (authError) throw authError
 
-    // 4. Cria registro na tabela usuarios imediatamente
     const { data: userData, error: insertError } = await supabase
       .from('usuarios')
       .insert({
@@ -37,7 +26,6 @@ exports.signUp = async (req, res) => {
         email,
         nome,
         tipo,
-        senha: hashedPassword,
         telefone: telefone || null,
         estado: estado || null,
         cidade: cidade || null
@@ -45,11 +33,6 @@ exports.signUp = async (req, res) => {
       .select()
 
     if (insertError) throw insertError
-
-    // 5. Atualiza o usuário no auth para marcar como "verificado"
-    await supabase.auth.admin.updateUserById(authData.user.id, {
-      email_confirmed_at: new Date().toISOString()
-    })
 
     res.json({
       success: true,
@@ -60,11 +43,9 @@ exports.signUp = async (req, res) => {
   } catch (error) {
     console.error("Erro no cadastro:", error)
 
-    // Tenta limpar o usuário criado no auth se falhar na tabela usuarios
     if (email) {
       const { data: { users } } = await supabase.auth.admin.listUsers()
       const userToDelete = users.find(u => u.email === email)
-
       if (userToDelete) {
         await supabase.auth.admin.deleteUser(userToDelete.id)
           .catch(e => console.error("Falha ao limpar usuário:", e))
@@ -79,12 +60,33 @@ exports.signUp = async (req, res) => {
   }
 }
 
-// Login simplificado
+// Reenviar e-mail de verificação
+exports.resendConfirmation = async (req, res) => {
+  const { email } = req.body
+
+  try {
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email
+    })
+
+    if (error) throw error
+
+    res.json({ success: true, message: 'E-mail de confirmação reenviado.' })
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      error: 'Erro ao reenviar e-mail',
+      details: error.message
+    })
+  }
+}
+
+// Login
 exports.login = async (req, res) => {
   const { email, password } = req.body
 
   try {
-    // 1. Autenticação via Supabase
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password
@@ -92,7 +94,10 @@ exports.login = async (req, res) => {
 
     if (error) throw error
 
-    // 2. Busca dados adicionais na tabela usuarios
+    if (!data.user.email_confirmed_at) {
+      throw new Error('E-mail ainda não confirmado. Verifique sua caixa de entrada.')
+    }
+
     const { data: userData, error: profileError } = await supabase
       .from('usuarios')
       .select('*')
@@ -100,12 +105,6 @@ exports.login = async (req, res) => {
       .single()
 
     if (profileError) throw profileError
-
-    // 3. Verifica a senha (opcional - redundante com auth do Supabase)
-    const isPasswordValid = await bcrypt.compare(password, userData.senha)
-    if (!isPasswordValid) {
-      throw new Error('Credenciais inválidas')
-    }
 
     res.json({
       success: true,
@@ -121,16 +120,15 @@ exports.login = async (req, res) => {
     console.error("Erro no login:", error)
     res.status(401).json({
       success: false,
-      error: 'Credenciais inválidas',
+      error: 'Não autorizado',
       details: error.message
     })
   }
 }
 
-// Obter perfil do usuário
+// Obter perfil
 exports.getUserProfile = async (req, res) => {
   try {
-    // Busca informações na tabela usuarios
     const { data: userData, error } = await supabase
       .from('usuarios')
       .select('*')
@@ -153,7 +151,7 @@ exports.getUserProfile = async (req, res) => {
   }
 }
 
-//Buscar usuário por ID
+// Buscar por ID
 exports.getUserById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -176,7 +174,6 @@ exports.updateProfile = async (req, res) => {
   const updates = req.body
 
   try {
-    // Atualiza na tabela usuarios
     const { data, error } = await supabase
       .from('usuarios')
       .update(updates)
@@ -199,7 +196,7 @@ exports.updateProfile = async (req, res) => {
   }
 }
 
-// Busca todas as manicures (dados públicos)
+// Buscar todas as manicures
 exports.getManicures = async (req, res) => {
   try {
     const { data: manicures, error } = await supabase
@@ -209,7 +206,6 @@ exports.getManicures = async (req, res) => {
 
     if (error) throw error;
 
-    // Retorna exatamente como vem do banco (Supabase já retorna null para campos não preenchidos)
     res.json({
       success: true,
       manicures: manicures || []
@@ -229,7 +225,6 @@ exports.getManicureById = async (req, res) => {
   try {
     const { id } = req.params;
     
-    // Verifica se o ID é um UUID válido
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
       return res.status(400).json({ error: 'ID inválido' });
     }
@@ -241,7 +236,6 @@ exports.getManicureById = async (req, res) => {
       .eq('tipo', 'MANICURE')
       .single();
 
-    // Remove o campo senha antes de retornar
     if (manicure && manicure.senha) {
       delete manicure.senha;
     }

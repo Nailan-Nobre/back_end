@@ -2,22 +2,24 @@ const express = require('express')
 const router = express.Router()
 const { 
   signUp,
+  resendConfirmation,
   login,
   getManicures,
   getUserProfile,
   getUserById,
-  getManicureById
+  getManicureById,
+  updateProfile
 } = require('../controllers/authController')
-const { updateProfile } = require('../controllers/authController');
 const { authenticate } = require('../middlewares/authMiddleware')
 
 // Rotas públicas
 router.post('/signup', signUp)
+router.post('/resend-confirmation', resendConfirmation)
 router.post('/login', login)
 router.get('/usuario/:id', getUserById)
 
 // Rotas protegidas
-router.put('/profile', authenticate, updateProfile);
+router.put('/profile', authenticate, updateProfile)
 router.get('/profile', authenticate, getUserProfile)
 router.get('/manicures', authenticate, getManicures)
 router.get('/manicures/:id', authenticate, getManicureById)
