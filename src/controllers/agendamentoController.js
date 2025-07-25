@@ -79,7 +79,6 @@ exports.listarAgendamentosUsuario = async (req, res) => {
   const userId = req.user.id;
 
   try {
-    // Busca agendamentos onde o usuário é cliente OU manicure
     const { data: agendamentos, error } = await supabase
       .from('agendamentos')
       .select(`
@@ -118,10 +117,9 @@ exports.listarAgendamentosUsuario = async (req, res) => {
   }
 };
 
-
-// Listar agendamentos para manicure (solicitações pendentes)
+// Listar solicitações de manicure pendentes (CORRIGIDO)
 exports.listarSolicitacoesManicure = async (req, res) => {
-  const manicureId = req.user.id;
+  const userId = req.user.id;
 
   try {
     const { data: agendamentos, error } = await supabase
@@ -132,45 +130,35 @@ exports.listarSolicitacoesManicure = async (req, res) => {
         servico,
         status,
         observacoes,
-        cliente_id,
-        cliente:cliente_id (id, nome, foto)
+        cliente:cliente_id (id, nome, foto),
+        manicure:manicure_id (id, nome, foto)
       `)
-      .eq('manicure_id', manicureId)
+      .eq('manicure_id', userId)
       .eq('status', 'pendente')
       .order('data_hora', { ascending: true });
 
     if (error) throw error;
 
-    // Processa os dados para garantir estrutura consistente
-    const resultados = agendamentos.map(agendamento => ({
-      ...agendamento,
-      cliente: agendamento.cliente_id || {
-        id: agendamento.cliente_id,
-        nome: 'Cliente',
-        foto: 'imagens/user.png'
-      }
-    }));
-
     res.json({
       success: true,
-      agendamentos: resultados
+      agendamentos
     });
 
   } catch (error) {
-    console.error('Erro ao listar solicitações:', error);
+    console.error('Erro ao listar solicitações pendentes:', error);
     res.status(500).json({
       success: false,
-      error: 'Erro ao listar solicitações',
+      error: 'Erro ao listar solicitações pendentes',
       details: error.message
     });
   }
 };
 
+// Listar agendamentos confirmados (CORRIGIDO)
 exports.listarAgendamentosConfirmados = async (req, res) => {
   const userId = req.user.id;
 
   try {
-    // Busca agendamentos confirmados onde o usuário é cliente OU manicure
     const { data: agendamentos, error } = await supabase
       .from('agendamentos')
       .select(`
@@ -203,11 +191,11 @@ exports.listarAgendamentosConfirmados = async (req, res) => {
   }
 };
 
+// Listar histórico de agendamentos (CORRIGIDO)
 exports.listarAgendamentosHistorico = async (req, res) => {
   const userId = req.user.id;
 
   try {
-    // Busca agendamentos finalizados ou cancelados onde o usuário é cliente OU manicure
     const { data: agendamentos, error } = await supabase
       .from('agendamentos')
       .select(`
@@ -220,7 +208,7 @@ exports.listarAgendamentosHistorico = async (req, res) => {
         manicure:manicure_id (id, nome, foto)
       `)
       .or(`cliente_id.eq.${userId},manicure_id.eq.${userId}`)
-      .in('status', ['concluido', 'cancelado'])
+      .in('status', ['concluido', 'cancelado', 'recusado'])
       .order('data_hora', { ascending: false });
 
     if (error) throw error;
@@ -240,7 +228,7 @@ exports.listarAgendamentosHistorico = async (req, res) => {
   }
 };
 
-// Atualizar status do agendamento (aceitar/recusar)
+// Atualizar status do agendamento (CORRIGIDO)
 exports.atualizarStatusAgendamento = async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
