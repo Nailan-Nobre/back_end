@@ -139,9 +139,15 @@ exports.listarSolicitacoesManicure = async (req, res) => {
 
     if (error) throw error;
 
+    // Garante que o objeto cliente está preenchido corretamente
+    const agendamentosFormatados = agendamentos.map(agendamento => ({
+      ...agendamento,
+      cliente: agendamento.cliente || { id: null, nome: 'Cliente', foto: 'imagens/user.png' }
+    }));
+
     res.json({
       success: true,
-      agendamentos
+      agendamentos: agendamentosFormatados
     });
 
   } catch (error) {
@@ -170,15 +176,21 @@ exports.listarAgendamentosConfirmados = async (req, res) => {
         cliente:cliente_id (id, nome, foto),
         manicure:manicure_id (id, nome, foto)
       `)
-      .or(`cliente_id.eq.${userId},manicure_id.eq.${userId}`)
+      .eq('manicure_id', userId)  // Alterado para pegar apenas os da manicure logada
       .eq('status', 'confirmado')
       .order('data_hora', { ascending: true });
 
     if (error) throw error;
 
+    // Garante que o objeto cliente está preenchido corretamente
+    const agendamentosFormatados = agendamentos.map(agendamento => ({
+      ...agendamento,
+      cliente: agendamento.cliente || { id: null, nome: 'Cliente', foto: 'imagens/user.png' }
+    }));
+
     res.json({
       success: true,
-      agendamentos
+      agendamentos: agendamentosFormatados
     });
 
   } catch (error) {
@@ -207,15 +219,21 @@ exports.listarAgendamentosHistorico = async (req, res) => {
         cliente:cliente_id (id, nome, foto),
         manicure:manicure_id (id, nome, foto)
       `)
-      .or(`cliente_id.eq.${userId},manicure_id.eq.${userId}`)
+      .eq('manicure_id', userId)  // Alterado para pegar apenas os da manicure logada
       .in('status', ['concluido', 'cancelado', 'recusado'])
       .order('data_hora', { ascending: false });
 
     if (error) throw error;
 
+    // Garante que o objeto cliente está preenchido corretamente
+    const agendamentosFormatados = agendamentos.map(agendamento => ({
+      ...agendamento,
+      cliente: agendamento.cliente || { id: null, nome: 'Cliente', foto: 'imagens/user.png' }
+    }));
+
     res.json({
       success: true,
-      agendamentos
+      agendamentos: agendamentosFormatados
     });
 
   } catch (error) {
@@ -227,6 +245,7 @@ exports.listarAgendamentosHistorico = async (req, res) => {
     });
   }
 };
+
 
 // Atualizar status do agendamento (CORRIGIDO)
 exports.atualizarStatusAgendamento = async (req, res) => {
