@@ -5,6 +5,7 @@ const testRoutes = require('./routes/testRoutes')
 const authRoutes = require('./routes/authRoutes') 
 const { authenticate } = require('./middlewares/authMiddleware')
 const agendamentoRoutes = require('./routes/agendamentoRoutes');
+const analiseRoutes = require('./routes/analiseRoutes');
 
 // Cria a aplicação Express
 const app = express()
@@ -15,6 +16,7 @@ app.use(express.json({ limit: '10mb' })); // ou 5mb se preferir
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Rotas
+app.use('/api/analise', analiseRoutes);// Rotas de ADM
 app.use('/api/users', userRoutes) // Rotas de usuário
 app.use('/auth', authRoutes) // Rotas de autenticação
 app.use('/api/test', testRoutes) // Rotas de teste (Supabase)
