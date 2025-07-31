@@ -650,3 +650,4 @@ function getStatusEmailTemplate(clienteNome, manicureNome, servico, dataHora, st
 </html>
     `;
 }
+
