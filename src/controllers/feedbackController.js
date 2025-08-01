@@ -73,8 +73,6 @@ exports.criarFeedback = async (req, res) => {
   }
 };
 
-
-
 exports.getFeedbacksPorManicure = async (req, res) => {
   const { manicureId } = req.params;
 
@@ -82,13 +80,13 @@ exports.getFeedbacksPorManicure = async (req, res) => {
     const { data: feedbacks, error } = await supabase
       .from('feedbacks')
       .select(`
-          id,
-          estrelas,
-          comentario,
-          created_at,
-          cliente:cliente_id(nome, foto),
-          agendamento:agendamento_id(servico)
-        `)
+        id,
+        estrelas,
+        comentario,
+        created_at,
+        usuario:usuarios!cliente_id(nome, foto),
+        agendamento:agendamento_id(servico)
+      `)
       .eq('manicure_id', manicureId)
       .order('created_at', { ascending: false });
 

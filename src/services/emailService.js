@@ -39,7 +39,7 @@ module.exports = {
       'confirmado': 'confirmado',
       'cancelado': 'cancelado',
       'concluido': 'concluído',
-      'recusado': 'recusado'
+      'recusado': 'recusado',
     };
 
     const subject = `Agendamento ${statusMessages[status]} - Pretty Nails`;
