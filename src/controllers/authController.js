@@ -4,9 +4,36 @@ const supabase = require('../config/db')
 exports.signUp = async (req, res) => {
   const { email, password, nome, tipo, telefone, estado, cidade } = req.body
 
+  console.log('Dados recebidos no cadastro:', { email, nome, tipo, telefone, estado, cidade })
+
   try {
+    // Validações básicas
     if (!email || !email.includes('@')) {
       throw new Error('E-mail inválido')
+    }
+
+    if (!password || password.length < 6) {
+      throw new Error('Senha deve ter pelo menos 6 caracteres')
+    }
+
+    if (!nome || nome.trim().length === 0) {
+      throw new Error('Nome é obrigatório')
+    }
+
+    if (!tipo || (tipo !== 'MANICURE' && tipo !== 'CLIENTE')) {
+      throw new Error('Tipo de usuário inválido')
+    }
+
+    if (!telefone || telefone.trim().length === 0) {
+      throw new Error('Telefone é obrigatório')
+    }
+
+    if (!estado || estado.trim().length === 0) {
+      throw new Error('Estado é obrigatório')
+    }
+
+    if (!cidade || cidade.trim().length === 0) {
+      throw new Error('Cidade é obrigatória')
     }
 
     const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -24,11 +51,11 @@ exports.signUp = async (req, res) => {
       .insert({
         id: authData.user.id,
         email,
-        nome,
+        nome: nome.trim(),
         tipo,
-        telefone: telefone || null,
-        estado: estado || null,
-        cidade: cidade || null
+        telefone: telefone.trim(),
+        estado: estado.trim(),
+        cidade: cidade.trim()
       })
       .select()
 
