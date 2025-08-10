@@ -11,6 +11,14 @@ function parseBase64Image(dataString) {
   const matches = dataString.match(/^data:(.*);base64,(.*)$/);
   if (!matches || matches.length !== 3) return null;
 
+  const allowedTypes = [
+    'image/jpeg',
+    'image/jpg',
+    'image/png',
+    'image/webp'
+  ];
+  if (!allowedTypes.includes(matches[1].toLowerCase())) return null;
+
   return {
     contentType: matches[1],
     extension: matches[1].split('/')[1],
