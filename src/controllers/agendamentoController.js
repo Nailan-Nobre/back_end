@@ -238,6 +238,75 @@ exports.criarAgendamento = async (req, res) => {
     }
 };
 
+// Obter estatísticas de agendamentos concluídos por mês para manicure
+exports.obterEstatisticasAgendamentos = async (req, res) => {
+    const manicureId = req.user.id;
+
+    try {
+        // Buscar agendamentos concluídos dos últimos 12 meses
+        const dataInicio = new Date();
+        dataInicio.setMonth(dataInicio.getMonth() - 11);
+        dataInicio.setDate(1);
+        dataInicio.setHours(0, 0, 0, 0);
+
+        const { data: agendamentos, error } = await supabase
+            .from('agendamentos')
+            .select('id, data_hora, status')
+            .eq('manicure_id', manicureId)
+            .eq('status', 'concluido')
+            .gte('data_hora', dataInicio.toISOString())
+            .order('data_hora', { ascending: true });
+
+        if (error) throw error;
+
+        // Organizar dados por mês
+        const estatisticasPorMes = {};
+        const mesesLabels = [];
+        const dataAtual = new Date();
+
+        // Inicializar os últimos 12 meses com 0
+        for (let i = 11; i >= 0; i--) {
+            const data = new Date();
+            data.setMonth(data.getMonth() - i);
+            const mesAno = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}`;
+            const mesLabel = data.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+            
+            estatisticasPorMes[mesAno] = 0;
+            mesesLabels.push(mesLabel);
+        }
+
+        // Contar agendamentos por mês
+        agendamentos.forEach(agendamento => {
+            const data = new Date(agendamento.data_hora);
+            const mesAno = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}`;
+            
+            if (estatisticasPorMes.hasOwnProperty(mesAno)) {
+                estatisticasPorMes[mesAno]++;
+            }
+        });
+
+        // Converter para array de valores
+        const valoresPorMes = Object.values(estatisticasPorMes);
+
+        res.json({
+            success: true,
+            estatisticas: {
+                labels: mesesLabels,
+                dados: valoresPorMes,
+                totalAgendamentos: agendamentos.length
+            }
+        });
+
+    } catch (error) {
+        console.error('Erro ao obter estatísticas:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Erro ao obter estatísticas de agendamentos',
+            details: error.message
+        });
+    }
+};
+
 // Listar agendamentos do usuário logado
 exports.listarAgendamentosUsuario = async (req, res) => {
     const userId = req.user.id;

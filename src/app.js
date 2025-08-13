@@ -27,11 +27,12 @@ app.use((req, res, next) => {
 
 // Rotas públicas
 app.use('/auth', authRoutes);
+app.use('/feedback', feedbackRoutes); // Rota pública para visualizar feedbacks
 
 // Rotas protegidas
 app.use('/api/users', authenticate, userRoutes);
 app.use('/api/agendamentos', authenticate, agendamentoRoutes);
-app.use('/api/feedbacks', authenticate, feedbackRoutes); // Nova rota para feedbacks
+app.use('/api/feedbacks', authenticate, feedbackRoutes); // Rota protegida para criar feedbacks
 app.use('/api/analise', authenticate, analiseRoutes);
 
 // Rotas de teste (protegidas ou não conforme necessidade)
