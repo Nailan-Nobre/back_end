@@ -10,6 +10,7 @@ router.get('/pendentes', authenticate, agendamentoController.listarSolicitacoesM
 router.get('/confirmados', authenticate, agendamentoController.listarAgendamentosConfirmados);
 router.get('/historico', authenticate, agendamentoController.listarAgendamentosHistorico);
 router.get('/estatisticas', authenticate, agendamentoController.obterEstatisticasAgendamentos);
+router.get('/historico-estatisticas', authenticate, agendamentoController.obterHistoricoEstatisticas);
 router.patch('/:id/status', authenticate, agendamentoController.atualizarStatusAgendamento);
 
 module.exports = router;

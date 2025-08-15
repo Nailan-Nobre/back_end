@@ -238,40 +238,160 @@ exports.criarAgendamento = async (req, res) => {
     }
 };
 
-// Obter estatísticas de agendamentos concluídos por mês para manicure
+// Obter estatísticas de agendamentos (concluídos e cancelados/recusados) dos últimos 5 meses
 exports.obterEstatisticasAgendamentos = async (req, res) => {
     const manicureId = req.user.id;
+    
+    console.log('=== OBTENDO ESTATÍSTICAS ===');
+    console.log('Manicure ID:', manicureId);
+    console.log('User object:', req.user);
 
     try {
-        // Buscar agendamentos concluídos dos últimos 12 meses
+        // Buscar agendamentos dos últimos 5 meses
         const dataInicio = new Date();
-        dataInicio.setMonth(dataInicio.getMonth() - 11);
+        dataInicio.setMonth(dataInicio.getMonth() - 4);
         dataInicio.setDate(1);
         dataInicio.setHours(0, 0, 0, 0);
+        
+        console.log('Data início:', dataInicio.toISOString());
 
         const { data: agendamentos, error } = await supabase
             .from('agendamentos')
             .select('id, data_hora, status')
             .eq('manicure_id', manicureId)
-            .eq('status', 'concluido')
+            .in('status', ['concluido', 'cancelado', 'recusado'])
             .gte('data_hora', dataInicio.toISOString())
             .order('data_hora', { ascending: true });
 
-        if (error) throw error;
+        if (error) {
+            console.error('Erro no Supabase:', error);
+            throw error;
+        }
+
+        console.log('Agendamentos encontrados:', agendamentos.length);
+        console.log('Agendamentos:', agendamentos);
 
         // Organizar dados por mês
         const estatisticasPorMes = {};
         const mesesLabels = [];
-        const dataAtual = new Date();
 
-        // Inicializar os últimos 12 meses com 0
-        for (let i = 11; i >= 0; i--) {
+        // Inicializar os últimos 5 meses com 0
+        for (let i = 4; i >= 0; i--) {
             const data = new Date();
             data.setMonth(data.getMonth() - i);
             const mesAno = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}`;
             const mesLabel = data.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
             
-            estatisticasPorMes[mesAno] = 0;
+            estatisticasPorMes[mesAno] = {
+                concluidos: 0,
+                cancelados: 0
+            };
+            mesesLabels.push(mesLabel);
+        }
+
+        console.log('Meses inicializados:', Object.keys(estatisticasPorMes));
+
+        // Contar agendamentos por mês
+        agendamentos.forEach(agendamento => {
+            const data = new Date(agendamento.data_hora);
+            const mesAno = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}`;
+            
+            console.log(`Processando agendamento: ${agendamento.id}, data: ${data.toISOString()}, mesAno: ${mesAno}, status: ${agendamento.status}`);
+            
+            if (estatisticasPorMes.hasOwnProperty(mesAno)) {
+                if (agendamento.status === 'concluido') {
+                    estatisticasPorMes[mesAno].concluidos++;
+                } else if (agendamento.status === 'cancelado' || agendamento.status === 'recusado') {
+                    estatisticasPorMes[mesAno].cancelados++;
+                }
+            }
+        });
+
+        console.log('Estatísticas finais por mês:', estatisticasPorMes);
+
+        // Converter para arrays de valores
+        const dadosConcluidos = Object.values(estatisticasPorMes).map(mes => mes.concluidos);
+        const dadosCancelados = Object.values(estatisticasPorMes).map(mes => mes.cancelados);
+
+        console.log('Dados concluídos:', dadosConcluidos);
+        console.log('Dados cancelados:', dadosCancelados);
+
+        const resultado = {
+            success: true,
+            estatisticas: {
+                labels: mesesLabels,
+                dadosConcluidos: dadosConcluidos,
+                dadosCancelados: dadosCancelados,
+                totalConcluidos: dadosConcluidos.reduce((sum, val) => sum + val, 0),
+                totalCancelados: dadosCancelados.reduce((sum, val) => sum + val, 0)
+            }
+        };
+
+        console.log('Resultado final:', resultado);
+        res.json(resultado);
+
+    } catch (error) {
+        console.error('Erro ao obter estatísticas:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Erro ao obter estatísticas de agendamentos',
+            details: error.message
+        });
+    }
+};
+
+// Obter histórico completo de estatísticas por ano
+exports.obterHistoricoEstatisticas = async (req, res) => {
+    const manicureId = req.user.id;
+    const { ano } = req.query;
+
+    console.log('=== OBTENDO HISTÓRICO ===');
+    console.log('Manicure ID:', manicureId);
+    console.log('Ano solicitado:', ano);
+
+    try {
+        // Se não foi especificado um ano, usar o ano atual
+        const anoEscolhido = ano ? parseInt(ano) : new Date().getFullYear();
+        console.log('Ano escolhido:', anoEscolhido);
+
+        // Data de início e fim do ano
+        const dataInicio = new Date(anoEscolhido, 0, 1); // 1º de janeiro
+        const dataFim = new Date(anoEscolhido, 11, 31, 23, 59, 59); // 31 de dezembro
+
+        console.log('Data início:', dataInicio.toISOString());
+        console.log('Data fim:', dataFim.toISOString());
+
+        const { data: agendamentos, error } = await supabase
+            .from('agendamentos')
+            .select('id, data_hora, status')
+            .eq('manicure_id', manicureId)
+            .in('status', ['concluido', 'cancelado', 'recusado'])
+            .gte('data_hora', dataInicio.toISOString())
+            .lte('data_hora', dataFim.toISOString())
+            .order('data_hora', { ascending: true });
+
+        if (error) {
+            console.error('Erro no Supabase (histórico):', error);
+            throw error;
+        }
+
+        console.log('Agendamentos encontrados (histórico):', agendamentos.length);
+        console.log('Agendamentos (histórico):', agendamentos);
+
+        // Organizar dados por mês (Janeiro a Dezembro)
+        const estatisticasPorMes = {};
+        const mesesLabels = [];
+
+        // Inicializar todos os 12 meses do ano com 0
+        for (let i = 0; i < 12; i++) {
+            const data = new Date(anoEscolhido, i, 1);
+            const mesAno = `${anoEscolhido}-${String(i + 1).padStart(2, '0')}`;
+            const mesLabel = data.toLocaleDateString('pt-BR', { month: 'long' });
+            
+            estatisticasPorMes[mesAno] = {
+                concluidos: 0,
+                cancelados: 0
+            };
             mesesLabels.push(mesLabel);
         }
 
@@ -281,27 +401,54 @@ exports.obterEstatisticasAgendamentos = async (req, res) => {
             const mesAno = `${data.getFullYear()}-${String(data.getMonth() + 1).padStart(2, '0')}`;
             
             if (estatisticasPorMes.hasOwnProperty(mesAno)) {
-                estatisticasPorMes[mesAno]++;
+                if (agendamento.status === 'concluido') {
+                    estatisticasPorMes[mesAno].concluidos++;
+                } else if (agendamento.status === 'cancelado' || agendamento.status === 'recusado') {
+                    estatisticasPorMes[mesAno].cancelados++;
+                }
             }
         });
 
-        // Converter para array de valores
-        const valoresPorMes = Object.values(estatisticasPorMes);
+        // Converter para arrays de valores
+        const dadosConcluidos = Object.values(estatisticasPorMes).map(mes => mes.concluidos);
+        const dadosCancelados = Object.values(estatisticasPorMes).map(mes => mes.cancelados);
 
-        res.json({
+        // Obter anos disponíveis (anos que têm agendamentos)
+        const { data: anosDisponiveis, error: anosError } = await supabase
+            .from('agendamentos')
+            .select('data_hora')
+            .eq('manicure_id', manicureId)
+            .in('status', ['concluido', 'cancelado', 'recusado']);
+
+        if (anosError) {
+            console.error('Erro ao buscar anos disponíveis:', anosError);
+            throw anosError;
+        }
+
+        const anos = [...new Set(anosDisponiveis.map(a => new Date(a.data_hora).getFullYear()))].sort();
+        console.log('Anos disponíveis:', anos);
+
+        const resultado = {
             success: true,
-            estatisticas: {
+            historico: {
+                ano: anoEscolhido,
                 labels: mesesLabels,
-                dados: valoresPorMes,
-                totalAgendamentos: agendamentos.length
+                dadosConcluidos: dadosConcluidos,
+                dadosCancelados: dadosCancelados,
+                totalConcluidos: dadosConcluidos.reduce((sum, val) => sum + val, 0),
+                totalCancelados: dadosCancelados.reduce((sum, val) => sum + val, 0),
+                anosDisponiveis: anos
             }
-        });
+        };
+
+        console.log('Resultado histórico final:', resultado);
+        res.json(resultado);
 
     } catch (error) {
-        console.error('Erro ao obter estatísticas:', error);
+        console.error('Erro ao obter histórico:', error);
         res.status(500).json({
             success: false,
-            error: 'Erro ao obter estatísticas de agendamentos',
+            error: 'Erro ao obter histórico de estatísticas',
             details: error.message
         });
     }
