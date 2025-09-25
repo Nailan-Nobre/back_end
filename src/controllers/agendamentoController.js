@@ -467,6 +467,7 @@ exports.listarAgendamentosUsuario = async (req, res) => {
         servico,
         status,
         observacoes,
+        avaliado,
         cliente:cliente_id (id, nome, foto),
         manicure:manicure_id (id, nome, foto)
       `)
@@ -475,9 +476,38 @@ exports.listarAgendamentosUsuario = async (req, res) => {
 
         if (error) throw error;
 
+        // Buscar feedbacks para agendamentos concluídos e avaliados
+        const agendamentosIds = agendamentos
+            .filter(a => a.status === 'concluido' && a.avaliado === true)
+            .map(a => a.id);
+
+        let feedbacksMap = {};
+        if (agendamentosIds.length > 0) {
+            const { data: feedbacks, error: feedbackError } = await supabase
+                .from('feedbacks')
+                .select('agendamento_id, estrelas, comentario, created_at')
+                .in('agendamento_id', agendamentosIds);
+
+            if (feedbackError) {
+                console.error('Erro ao buscar feedbacks:', feedbackError);
+            } else {
+                // Criar mapa de feedback por agendamento_id
+                feedbacksMap = feedbacks.reduce((map, feedback) => {
+                    map[feedback.agendamento_id] = feedback;
+                    return map;
+                }, {});
+            }
+        }
+
+        // Adicionar feedbacks aos agendamentos correspondentes
+        const agendamentosComFeedback = agendamentos.map(agendamento => ({
+            ...agendamento,
+            feedback: feedbacksMap[agendamento.id] || null
+        }));
+
         // Separa agendamentos como cliente e como manicure
-        const comoCliente = agendamentos.filter(a => a.cliente.id === userId);
-        const comoManicure = agendamentos.filter(a => a.manicure.id === userId);
+        const comoCliente = agendamentosComFeedback.filter(a => a.cliente.id === userId);
+        const comoManicure = agendamentosComFeedback.filter(a => a.manicure.id === userId);
 
         res.json({
             success: true,

@@ -1,4 +1,5 @@
 const supabase = require('../config/db');
+const User = require('../models/User');
 require('dotenv').config();
 
 exports.criarFeedback = async (req, res) => {
@@ -57,6 +58,9 @@ exports.criarFeedback = async (req, res) => {
       .eq('id', agendamento_id);
 
     if (updateError) throw updateError;
+
+    // O trigger na tabela feedbacks já atualiza automaticamente a média de estrelas
+    // Não é necessário chamada manual para User.atualizarMediaEstrelas()
 
     res.status(201).json({
       success: true,

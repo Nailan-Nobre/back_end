@@ -1,7 +1,6 @@
 const express = require('express');
 const cors = require('cors');
 const userRoutes = require('./routes/userRoutes');
-const testRoutes = require('./routes/testRoutes');
 const authRoutes = require('./routes/authRoutes');
 const { authenticate } = require('./middlewares/authMiddleware');
 const agendamentoRoutes = require('./routes/agendamentoRoutes');
@@ -34,9 +33,6 @@ app.use('/api/users', authenticate, userRoutes);
 app.use('/api/agendamentos', authenticate, agendamentoRoutes);
 app.use('/api/feedbacks', authenticate, feedbackRoutes); // Rota protegida para criar feedbacks
 app.use('/api/analise', authenticate, analiseRoutes);
-
-// Rotas de teste (protegidas ou não conforme necessidade)
-app.use('/api/test', testRoutes);
 
 // Rota protegida de exemplo
 app.get('/protegido', authenticate, (req, res) => {
