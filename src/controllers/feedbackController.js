@@ -3,7 +3,6 @@ require('dotenv').config();
 
 exports.criarFeedback = async (req, res) => {
   const { agendamento_id, estrelas, comentario } = req.body;
-  const cliente_id = req.user.id;
 
   // Validação básica
   if (!agendamento_id || !estrelas || estrelas < 1 || estrelas > 5) {
@@ -17,9 +16,8 @@ exports.criarFeedback = async (req, res) => {
     // Verifica se o agendamento existe e pertence ao cliente
     const { data: agendamento, error: agendamentoError } = await supabase
       .from('agendamentos')
-      .select('id, cliente_id, manicure_id, status')
+      .select('id, cliente_nome, cliente_cpf, manicure_id, status')
       .eq('id', agendamento_id)
-      .eq('cliente_id', cliente_id)
       .eq('status', 'concluido')
       .single();
 
@@ -49,15 +47,15 @@ exports.criarFeedback = async (req, res) => {
       .from('feedbacks')
       .insert({
         agendamento_id,
-        cliente_id,
+        cliente_nome: agendamento.cliente_nome,
+        cliente_cpf: agendamento.cliente_cpf,
         manicure_id: agendamento.manicure_id,
         estrelas,
         comentario
       })
       .select(`
         *,
-        cliente:usuarios!cliente_id(nome, foto),
-        manicure:usuarios!manicure_id(nome, foto)
+        manicure:manicures!manicure_id(nome, foto)
       `);
 
     if (feedbackInsertError) {
@@ -78,7 +76,7 @@ exports.criarFeedback = async (req, res) => {
 
     // DEBUG: Verifica se a média foi atualizada pelo trigger
     const { data: manicureAtualizada, error: errorManicure } = await supabase
-      .from('usuarios')
+      .from('manicures')
       .select('estrelas, nome')
       .eq('id', agendamento.manicure_id)
       .single();
@@ -115,8 +113,9 @@ exports.getFeedbacksPorManicure = async (req, res) => {
         id,
         estrelas,
         comentario,
+        cliente_nome,
+        cliente_cpf,
         created_at,
-        usuario:usuarios!cliente_id(nome, foto),
         agendamento:agendamentos!agendamento_id(servico)
       `)
       .eq('manicure_id', manicureId)
@@ -126,7 +125,7 @@ exports.getFeedbacksPorManicure = async (req, res) => {
 
     // Busca também a média atual da manicure
     const { data: manicure, error: errorManicure } = await supabase
-      .from('usuarios')
+      .from('manicures')
       .select('estrelas, nome')
       .eq('id', manicureId)
       .single();
@@ -157,8 +156,7 @@ exports.getAgendamentoComFeedback = async (req, res) => {
       .from('agendamentos')
       .select(`
         *,
-        cliente:usuarios!cliente_id(id, nome, foto),
-        manicure:usuarios!manicure_id(id, nome, foto, estrelas),
+        manicure:manicures!manicure_id(id, nome, foto, estrelas),
         feedbacks(
           id, 
           estrelas, 
@@ -166,7 +164,7 @@ exports.getAgendamentoComFeedback = async (req, res) => {
           created_at
         )
       `)
-      .or(`cliente_id.eq.${userId},manicure_id.eq.${userId}`)
+      .or(`manicure_id.eq.${userId}`)
       .eq('id', id)
       .single();
 
@@ -211,7 +209,7 @@ exports.atualizarMediaEstrelas = async (req, res) => {
 
     // Atualiza manualmente
     const { data: manicure, error: updateError } = await supabase
-      .from('usuarios')
+      .from('manicures')
       .update({ 
         estrelas: mediaCalculada,
         updated_at: new Date().toISOString()

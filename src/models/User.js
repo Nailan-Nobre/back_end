@@ -2,14 +2,14 @@ const supabase = require('../config/db')
 
 const User = {
   async getAll() {
-    const { data, error } = await supabase.from('usuarios').select('*')
+    const { data, error } = await supabase.from('manicures').select('*')
     if (error) throw error
     return data
   },
 
   async getById(id) {
     const { data, error } = await supabase
-      .from('usuarios')
+      .from('manicures')
       .select('*')
       .eq('id', id)
       .single()
@@ -18,9 +18,16 @@ const User = {
   },
 
   async create({ name, email }) {
+    const slug = name
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+
     const { data, error } = await supabase
-      .from('usuarios')
-      .insert([{ name, email, estrelas: 0 }])
+      .from('manicures')
+      .insert([{ nome: name, email, slug, estrelas: 0 }])
       .select()
     if (error) throw error
     return data[0]
@@ -46,7 +53,7 @@ const User = {
 
       // Atualiza a média de estrelas do usuário manicure
       const { data, error: updateError } = await supabase
-        .from('usuarios')
+        .from('manicures')
         .update({ estrelas: mediaEstrelas })
         .eq('id', manicureId)
         .select()
@@ -67,9 +74,8 @@ const User = {
   // Função para buscar manicures com suas médias de estrelas (apenas 3+ estrelas)
   async getManicuresComEstrelas() {
     const { data, error } = await supabase
-      .from('usuarios')
+      .from('manicures')
       .select('id, nome, email, telefone, cidade, estado, foto, estrelas, created_at')
-      .eq('tipo', 'MANICURE')
       .gte('estrelas', 3.0) // Filtrar apenas manicures com 3 ou mais estrelas
       .order('estrelas', { ascending: false })
     
@@ -80,9 +86,8 @@ const User = {
   // Função para buscar TODAS as manicures (para telas administrativas ou pesquisa)
   async getTodasManicures() {
     const { data, error } = await supabase
-      .from('usuarios')
+      .from('manicures')
       .select('id, nome, email, telefone, cidade, estado, foto, estrelas, created_at')
-      .eq('tipo', 'MANICURE')
       .order('estrelas', { ascending: false })
     
     if (error) throw error
@@ -94,10 +99,9 @@ const User = {
     try {
       // Busca dados da manicure
       const { data: manicure, error: manicureError } = await supabase
-        .from('usuarios')
+        .from('manicures')
         .select('*')
         .eq('id', manicureId)
-        .eq('tipo', 'MANICURE')
         .single()
 
       if (manicureError) throw manicureError
@@ -110,7 +114,7 @@ const User = {
           estrelas,
           comentario,
           created_at,
-          cliente:usuarios!cliente_id(nome, foto)
+          cliente:manicures!cliente_id(nome, foto)
         `)
         .eq('manicure_id', manicureId)
         .order('created_at', { ascending: false })

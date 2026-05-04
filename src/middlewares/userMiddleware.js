@@ -3,7 +3,7 @@ const supabase = require('../config/db')
 exports.getUserProfile = async (req, res, next) => {
   try {
     const { data, error } = await supabase
-      .from('usuarios')
+      .from('manicures')
       .select('*')
       .eq('id', req.user.id)
       .single()

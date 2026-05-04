@@ -62,43 +62,6 @@ exports.getUserById = async (req, res) => {
   }
 }
 
-// Buscar todas as manicures com suas médias de estrelas
-exports.getManicuresComEstrelas = async (req, res) => {
-  try {
-    const manicures = await User.getManicuresComEstrelas()
-    res.status(200).json({
-      success: true,
-      manicures
-    })
-  } catch (error) {
-    console.error('Erro ao buscar manicures:', error)
-    res.status(500).json({
-      success: false,
-      error: 'Erro ao buscar manicures',
-      details: error.message
-    })
-  }
-}
-
-// Buscar detalhes de uma manicure específica com feedbacks
-exports.getManicureDetalhes = async (req, res) => {
-  const { id } = req.params
-  try {
-    const manicure = await User.getManicureComDetalhes(id)
-    res.status(200).json({
-      success: true,
-      manicure
-    })
-  } catch (error) {
-    console.error('Erro ao buscar detalhes da manicure:', error)
-    res.status(500).json({
-      success: false,
-      error: 'Erro ao buscar detalhes da manicure',
-      details: error.message
-    })
-  }
-}
-
 // Atualizar média de estrelas de uma manicure
 exports.atualizarMediaEstrelas = async (req, res) => {
   const { id } = req.params

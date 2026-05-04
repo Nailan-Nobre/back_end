@@ -1,10 +1,11 @@
 const supabase = require('../config/db')
 
-// Cadastro direto na tabela usuarios
+// Cadastro direto na tabela manicures
 exports.signUp = async (req, res) => {
-  const { email, password, nome, tipo, telefone, estado, cidade } = req.body
+  const { email, password, nome, telefone, estado, cidade } = req.body
+  let createdUserId = null
 
-  console.log('Dados recebidos no cadastro:', { email, nome, tipo, telefone, estado, cidade })
+  console.log('Dados recebidos no cadastro:', { email, nome, telefone, estado, cidade })
 
   try {
     // Validações básicas
@@ -20,10 +21,6 @@ exports.signUp = async (req, res) => {
       throw new Error('Nome é obrigatório')
     }
 
-    if (!tipo || (tipo !== 'MANICURE' && tipo !== 'CLIENTE')) {
-      throw new Error('Tipo de usuário inválido')
-    }
-
     if (!telefone || telefone.trim().length === 0) {
       throw new Error('Telefone é obrigatório')
     }
@@ -36,23 +33,26 @@ exports.signUp = async (req, res) => {
       throw new Error('Cidade é obrigatória')
     }
 
-    const { data: authData, error: authError } = await supabase.auth.signUp({
+    const slugBase = slugify(nome)
+    const slug = await gerarSlugUnico(supabase, slugBase)
+
+    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email,
       password,
-      options: {
-        data: { nome, tipo }
-      }
+      email_confirm: true,
+      user_metadata: { nome, slug }
     })
 
     if (authError) throw authError
+    createdUserId = authData.user.id
 
     const { data: userData, error: insertError } = await supabase
-      .from('usuarios')
+      .from('manicures')
       .insert({
-        id: authData.user.id,
+        id: createdUserId,
         email,
         nome: nome.trim(),
-        tipo,
+        slug,
         telefone: telefone.trim(),
         estado: estado.trim(),
         cidade: cidade.trim()
@@ -64,19 +64,34 @@ exports.signUp = async (req, res) => {
     res.json({
       success: true,
       message: 'Usuário cadastrado com sucesso!',
-      user: userData[0]
+      user: {
+        ...userData[0],
+        tipo: 'MANICURE'
+      }
     })
 
   } catch (error) {
     console.error("Erro no cadastro:", error)
 
-    if (email) {
-      const { data: { users } } = await supabase.auth.admin.listUsers()
-      const userToDelete = users.find(u => u.email === email)
-      if (userToDelete) {
-        await supabase.auth.admin.deleteUser(userToDelete.id)
-          .catch(e => console.error("Falha ao limpar usuário:", e))
-      }
+    if (createdUserId) {
+      await supabase.auth.admin.deleteUser(createdUserId)
+        .catch(e => console.error("Falha ao limpar usuário:", e))
+    }
+
+    if (error.message?.toLowerCase().includes('already registered')) {
+      return res.status(409).json({
+        success: false,
+        error: 'E-mail já cadastrado',
+        details: 'Erro ao processar cadastro'
+      })
+    }
+
+    if (error.message?.toLowerCase().includes('rate limit')) {
+      return res.status(429).json({
+        success: false,
+        error: 'Muitas tentativas de cadastro. Tente novamente em alguns minutos.',
+        details: 'Erro ao processar cadastro'
+      })
     }
 
     res.status(400).json({
@@ -126,7 +141,7 @@ exports.login = async (req, res) => {
     }
 
     const { data: userData, error: profileError } = await supabase
-      .from('usuarios')
+      .from('manicures')
       .select('*')
       .eq('id', data.user.id)
       .single()
@@ -139,7 +154,8 @@ exports.login = async (req, res) => {
       refresh_token: data.session.refresh_token,
       user: {
         ...data.user,
-        ...userData
+        ...userData,
+        tipo: 'MANICURE'
       }
     })
 
@@ -157,7 +173,7 @@ exports.login = async (req, res) => {
 exports.getUserProfile = async (req, res) => {
   try {
     const { data: userData, error } = await supabase
-      .from('usuarios')
+      .from('manicures')
       .select('*')
       .eq('id', req.user.id)
       .single()
@@ -166,7 +182,10 @@ exports.getUserProfile = async (req, res) => {
 
     res.json({
       success: true,
-      user: userData
+      user: {
+        ...userData,
+        tipo: 'MANICURE'
+      }
     })
 
   } catch (error) {
@@ -183,7 +202,7 @@ exports.getUserById = async (req, res) => {
   try {
     const { id } = req.params;
     const { data: user, error } = await supabase
-      .from('usuarios')
+      .from('manicures')
       .select('*')
       .eq('id', id)
       .single();
@@ -196,13 +215,44 @@ exports.getUserById = async (req, res) => {
   }
 }
 
+// Buscar manicure por slug para a tela pública de agendamento
+exports.getManicureBySlug = async (req, res) => {
+  try {
+    const { slug } = req.params
+
+    const { data: manicure, error } = await supabase
+      .from('manicures')
+      .select('id, email, nome, foto, telefone, estado, cidade, bio, slug, estrelas, ativa, dias_trabalho, horarios, servicos, regras, created_at, updated_at')
+      .eq('slug', slug)
+      .single()
+
+    if (error || !manicure) {
+      return res.status(404).json({
+        success: false,
+        error: 'Manicure não encontrada'
+      })
+    }
+
+    res.json({
+      success: true,
+      manicure
+    })
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao carregar manicure',
+      details: error.message
+    })
+  }
+}
+
 // Atualizar perfil
 exports.updateProfile = async (req, res) => {
   const updates = req.body
 
   try {
     const { data, error } = await supabase
-      .from('usuarios')
+      .from('manicures')
       .update(updates)
       .eq('id', req.user.id)
       .select()
@@ -211,7 +261,10 @@ exports.updateProfile = async (req, res) => {
 
     res.json({
       success: true,
-      user: data[0]
+      user: {
+        ...data[0],
+        tipo: 'MANICURE'
+      }
     })
 
   } catch (error) {
@@ -223,56 +276,31 @@ exports.updateProfile = async (req, res) => {
   }
 }
 
-// Buscar todas as manicures
-exports.getManicures = async (req, res) => {
-  try {
-    const { data: manicures, error } = await supabase
-      .from('usuarios')
-      .select('id, nome, foto, telefone, estado, cidade, rua, email')
-      .eq('tipo', 'MANICURE');
+function slugify(text) {
+  return text
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
 
-    if (error) throw error;
+async function gerarSlugUnico(client, base) {
+  let slug = base
+  let tentativa = 0
 
-    res.json({
-      success: true,
-      manicures: manicures || []
-    });
+  while (true) {
+    const { data, error } = await client
+      .from('manicures')
+      .select('id')
+      .eq('slug', slug)
+      .maybeSingle()
 
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: "Erro ao buscar profissionais",
-      details: error.message
-    });
+    if (error) throw error
+    if (!data) return slug
+
+    tentativa += 1
+    slug = `${base}-${tentativa}`
   }
 }
 
-// Buscar manicure por ID
-exports.getManicureById = async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) {
-      return res.status(400).json({ error: 'ID inválido' });
-    }
-
-    const { data: manicure, error } = await supabase
-      .from('usuarios')
-      .select('*')
-      .eq('id', id)
-      .eq('tipo', 'MANICURE')
-      .single();
-
-    if (manicure && manicure.senha) {
-      delete manicure.senha;
-    }
-
-    if (error) throw error;
-    if (!manicure) return res.status(404).json({ error: 'Manicure não encontrada' });
-
-    res.json(manicure);
-  } catch (error) {
-    console.error('Erro ao buscar manicure:', error);
-    res.status(500).json({ error: 'Erro interno ao buscar manicure' });
-  }
-}

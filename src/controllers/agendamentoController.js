@@ -26,20 +26,121 @@ async function sendEmail(to, subject, html) {
     }
 }
 
+function normalizeAgendamento(agendamento) {
+    if (!agendamento) {
+        return agendamento;
+    }
+
+    return {
+        ...agendamento,
+        cliente: agendamento.cliente || {
+            id: null,
+            nome: agendamento.cliente_nome || 'Cliente',
+            foto: 'imagens/user.png'
+        },
+        manicure: agendamento.manicure || {
+            id: agendamento.manicure_id || null,
+            nome: 'Manicure',
+            foto: 'imagens/user.png'
+        }
+    };
+}
+
+function normalizeAgendamentosParaLista(agendamentos = []) {
+    return agendamentos.map(normalizeAgendamento);
+}
+
+function formatarDataAgendamento(dataHora) {
+    return new Date(dataHora).toLocaleString('pt-BR', {
+        weekday: 'long',
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function getEmailClienteAgendamentoTemplate({ clienteNome, manicureNome, servico, dataHora, observacoes, linkAgendamento }) {
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agendamento Recebido - Pretty Nails</title>
+</head>
+<body style="font-family: Arial, sans-serif; background-color: #f7f7f7; margin: 0; padding: 0; color: #333;">
+    <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 24px; border-radius: 12px;">
+        <h1 style="color: #FF6B6B;">Agendamento recebido</h1>
+        <p>Olá, <strong>${clienteNome}</strong>.</p>
+        <p>Seu agendamento com <strong>${manicureNome}</strong> foi registrado com sucesso.</p>
+        <p><strong>Serviço:</strong> ${servico}<br>
+        <strong>Data/Horário:</strong> ${formatarDataAgendamento(dataHora)}<br>
+        <strong>Observações:</strong> ${observacoes || 'Nenhuma'}</p>
+        <p>Você pode acessar novamente o link da manicure aqui:</p>
+        <p><a href="${linkAgendamento}" style="display:inline-block;background:#FF6B6B;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;">Abrir agendamento</a></p>
+    </div>
+</body>
+</html>`;
+}
+
+function getEmailManicureAgendamentoTemplate({ clienteNome, clienteEmail, clienteCpf, clienteTelefone, manicureNome, servico, dataHora, observacoes, linkPainel }) {
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Novo Agendamento - Pretty Nails</title>
+</head>
+<body style="font-family: Arial, sans-serif; background-color: #f7f7f7; margin: 0; padding: 0; color: #333;">
+    <div style="max-width: 600px; margin: 0 auto; background: #ffffff; padding: 24px; border-radius: 12px;">
+        <h1 style="color: #FF6B6B;">Novo agendamento recebido</h1>
+        <p>Você recebeu um novo agendamento de <strong>${clienteNome}</strong>.</p>
+        <p><strong>E-mail:</strong> ${clienteEmail}<br>
+        <strong>CPF:</strong> ${clienteCpf}<br>
+        <strong>Telefone:</strong> ${clienteTelefone || 'Não informado'}<br>
+        <strong>Serviço:</strong> ${servico}<br>
+        <strong>Data/Horário:</strong> ${formatarDataAgendamento(dataHora)}<br>
+        <strong>Observações:</strong> ${observacoes || 'Nenhuma'}</p>
+        <p><a href="${linkPainel}" style="display:inline-block;background:#FF6B6B;color:#fff;text-decoration:none;padding:12px 18px;border-radius:8px;">Abrir painel</a></p>
+    </div>
+</body>
+</html>`;
+}
+
 
 // Criar novo agendamento
 exports.criarAgendamento = async (req, res) => {
-    const { manicureId, dataHora, servico, observacoes } = req.body;
-    const clienteId = req.user.id;
+    const {
+        slug,
+        manicureId,
+        dataHora,
+        servico,
+        observacoes,
+        clienteNome,
+        clienteCpf,
+        clienteTelefone,
+        clienteEmail
+    } = req.body;
 
     try {
-        // Verifica se a manicure existe e obtém o e-mail
-        const { data: manicure, error: manicureError } = await supabase
-            .from('usuarios')
-            .select('id, nome, email')
-            .eq('id', manicureId)
-            .eq('tipo', 'MANICURE')
-            .single();
+        if (!clienteNome || !clienteCpf || !clienteEmail || !dataHora || !servico) {
+            return res.status(400).json({
+                success: false,
+                error: 'Preencha nome, e-mail, CPF, serviço e data do agendamento'
+            });
+        }
+
+        const manicureQuery = supabase
+            .from('manicures')
+            .select('id, nome, email, foto, slug, ativa')
+            .limit(1);
+
+        const { data: manicure, error: manicureError } = slug
+            ? await manicureQuery.eq('slug', slug).single()
+            : await manicureQuery.eq('id', manicureId).single();
 
         if (manicureError || !manicure) {
             return res.status(404).json({
@@ -48,17 +149,19 @@ exports.criarAgendamento = async (req, res) => {
             });
         }
 
-        // Obtém dados do cliente
-        const { data: cliente, error: clienteError } = await supabase
-            .from('usuarios')
-            .select('id, nome, email')
-            .eq('id', clienteId)
-            .single();
-
-        if (clienteError || !cliente) {
-            return res.status(404).json({
+        if (manicure.ativa === false) {
+            return res.status(403).json({
                 success: false,
-                error: 'Cliente não encontrado'
+                error: 'Este link de agendamento está desativado'
+            });
+        }
+
+        const dataAgendamento = new Date(dataHora);
+
+        if (Number.isNaN(dataAgendamento.getTime())) {
+            return res.status(400).json({
+                success: false,
+                error: 'Data do agendamento inválida'
             });
         }
 
@@ -66,8 +169,8 @@ exports.criarAgendamento = async (req, res) => {
         const { data: conflito, error: conflitoError } = await supabase
             .from('agendamentos')
             .select('id')
-            .eq('manicure_id', manicureId)
-            .eq('data_hora', new Date(dataHora).toISOString())
+            .eq('manicure_id', manicure.id)
+            .eq('data_hora', dataAgendamento.toISOString())
             .not('status', 'eq', 'cancelado')
             .single();
 
@@ -82,9 +185,12 @@ exports.criarAgendamento = async (req, res) => {
         const { data: novoAgendamento, error } = await supabase
             .from('agendamentos')
             .insert({
-                cliente_id: clienteId,
-                manicure_id: manicureId,
-                data_hora: new Date(dataHora).toISOString(),
+                manicure_id: manicure.id,
+                cliente_nome: clienteNome,
+                cliente_email: clienteEmail,
+                cliente_cpf: clienteCpf,
+                cliente_telefone: clienteTelefone || null,
+                data_hora: dataAgendamento.toISOString(),
                 servico,
                 observacoes,
                 status: 'pendente'
@@ -95,137 +201,48 @@ exports.criarAgendamento = async (req, res) => {
          servico,
          observacoes,
          status,
-         cliente:cliente_id (id, nome, foto),
-         manicure:manicure_id (id, nome, foto)
+            cliente_nome,
+            cliente_email,
+            cliente_cpf,
+            cliente_telefone,
+            manicure:manicure_id (id, nome, foto)
       `);
 
         if (error) throw error;
 
-        // Envia e-mail para a manicure (não bloqueante)
-        const emailSubject = 'Novo Agendamento - Pretty Nails';
-        const emailHtml = `
-<!DOCTYPE html>
-<html>
-<head>
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Novo Agendamento - Pretty Nails</title>
-    <style type="text/css">
-        /* Base styles */
-        body {
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            line-height: 1.6;
-            color: #333333;
-            background-color: #f7f7f7;
-            margin: 0;
-            padding: 0;
-        }
-        .container {
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-            background: #ffffff;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        }
-        .header {
-            text-align: center;
-            padding: 20px 0;
-            border-bottom: 1px solid #eeeeee;
-        }
-        .logo {
-            max-width: 150px;
-            height: auto;
-        }
-        .content {
-            padding: 20px 0;
-        }
-        .footer {
-            text-align: center;
-            padding: 20px 0;
-            border-top: 1px solid #eeeeee;
-            font-size: 12px;
-            color: #777777;
-        }
-        .button {
-            display: inline-block;
-            padding: 12px 24px;
-            background-color: #FF6B6B;
-            color: #ffffff !important;
-            text-decoration: none;
-            border-radius: 4px;
-            font-weight: bold;
-            margin: 15px 0;
-        }
-        .appointment-details {
-            background-color: #f9f9f9;
-            padding: 15px;
-            border-radius: 6px;
-            margin: 15px 0;
-        }
-        .detail-item {
-            margin-bottom: 8px;
-        }
-        .detail-label {
-            font-weight: bold;
-            color: #555555;
-            display: inline-block;
-            width: 100px;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1 style="color: #FF6B6B; margin-top: 15px;">Novo Agendamento Recebido</h1>
-        </div>
-        
-        <div class="content">
-            <p>Olá,</p>
-            <p>Você recebeu um novo agendamento de <strong>${cliente.nome}</strong>.</p>
-            
-            <div class="appointment-details">
-                <div class="detail-item">
-                    <span class="detail-label">Serviço:</span>
-                    <span>${servico}</span>
-                </div>
-                <div class="detail-item">
-                    <span class="detail-label">Data/Horário:</span>
-                    <span>${new Date(dataHora).toLocaleString('pt-BR', {
-            weekday: 'long',
-            day: '2-digit',
-            month: 'long',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        })}</span>
-                </div>
-                <div class="detail-item">
-                    <span class="detail-label">Observações:</span>
-                    <span>${observacoes || 'Nenhuma observação foi fornecida'}</span>
-                </div>
-            </div>
-            
-            <p>Por favor, acesse seu painel para confirmar ou recusar este agendamento:</p>
-            <a href="https://pretty-nails-app.vercel.app/cadastro-e-login/cadastro-e-login.html" class="button">Acessar Painel</a>
-            
-            <p style="margin-top: 20px;">Atenciosamente,<br>Equipe Pretty Nails</p>
-        </div>
-        
-        <div class="footer">
-            <p>© ${new Date().getFullYear()} Pretty Nails. Todos os direitos reservados.</p>
-            <p>Este é um e-mail automático, por favor não responda.</p>
-        </div>
-    </div>
-</body>
-</html>
-`;
+        const linkAgendamento = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/agendamento/${encodeURIComponent(manicure.slug || slug || '')}`;
+        const linkPainel = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/cadastro-e-login/cadastro-e-login.html`;
 
-        sendEmail(manicure.email, emailSubject, emailHtml);
+        const emailManicureSubject = 'Novo Agendamento - Pretty Nails';
+        const emailClienteSubject = 'Seu agendamento foi recebido - Pretty Nails';
+        const emailManicureHtml = getEmailManicureAgendamentoTemplate({
+            clienteNome,
+            clienteEmail,
+            clienteCpf,
+            clienteTelefone,
+            manicureNome: manicure.nome,
+            servico,
+            dataHora: dataAgendamento,
+            observacoes,
+            linkPainel
+        });
+        const emailClienteHtml = getEmailClienteAgendamentoTemplate({
+            clienteNome,
+            manicureNome: manicure.nome,
+            servico,
+            dataHora: dataAgendamento,
+            observacoes,
+            linkAgendamento
+        });
+
+        await Promise.allSettled([
+            sendEmail(manicure.email, emailManicureSubject, emailManicureHtml),
+            sendEmail(clienteEmail, emailClienteSubject, emailClienteHtml)
+        ]);
 
         res.status(201).json({
             success: true,
-            agendamento: novoAgendamento[0]
+            agendamento: normalizeAgendamento(novoAgendamento[0])
         });
 
     } catch (error) {
@@ -468,52 +485,24 @@ exports.listarAgendamentosUsuario = async (req, res) => {
         status,
         observacoes,
         avaliado,
-        cliente:cliente_id (id, nome, foto),
+                cliente_nome,
+                cliente_email,
+                cliente_cpf,
+                cliente_telefone,
         manicure:manicure_id (id, nome, foto)
       `)
-            .or(`cliente_id.eq.${userId},manicure_id.eq.${userId}`)
+            .eq('manicure_id', userId)
             .order('data_hora', { ascending: true });
 
         if (error) throw error;
 
-        // Buscar feedbacks para agendamentos concluídos e avaliados
-        const agendamentosIds = agendamentos
-            .filter(a => a.status === 'concluido' && a.avaliado === true)
-            .map(a => a.id);
-
-        let feedbacksMap = {};
-        if (agendamentosIds.length > 0) {
-            const { data: feedbacks, error: feedbackError } = await supabase
-                .from('feedbacks')
-                .select('agendamento_id, estrelas, comentario, created_at')
-                .in('agendamento_id', agendamentosIds);
-
-            if (feedbackError) {
-                console.error('Erro ao buscar feedbacks:', feedbackError);
-            } else {
-                // Criar mapa de feedback por agendamento_id
-                feedbacksMap = feedbacks.reduce((map, feedback) => {
-                    map[feedback.agendamento_id] = feedback;
-                    return map;
-                }, {});
-            }
-        }
-
-        // Adicionar feedbacks aos agendamentos correspondentes
-        const agendamentosComFeedback = agendamentos.map(agendamento => ({
-            ...agendamento,
-            feedback: feedbacksMap[agendamento.id] || null
-        }));
-
-        // Separa agendamentos como cliente e como manicure
-        const comoCliente = agendamentosComFeedback.filter(a => a.cliente.id === userId);
-        const comoManicure = agendamentosComFeedback.filter(a => a.manicure.id === userId);
+        const agendamentosComFeedback = normalizeAgendamentosParaLista(agendamentos);
 
         res.json({
             success: true,
             agendamentos: {
-                comoCliente,
-                comoManicure
+                comoCliente: [],
+                comoManicure: agendamentosComFeedback
             }
         });
 
@@ -540,7 +529,10 @@ exports.listarSolicitacoesManicure = async (req, res) => {
         servico,
         status,
         observacoes,
-        cliente:cliente_id (id, nome, foto),
+                cliente_nome,
+                cliente_email,
+                cliente_cpf,
+                cliente_telefone,
         manicure:manicure_id (id, nome, foto)
       `)
             .eq('manicure_id', userId)
@@ -549,11 +541,7 @@ exports.listarSolicitacoesManicure = async (req, res) => {
 
         if (error) throw error;
 
-        // Garante que o objeto cliente está preenchido corretamente
-        const agendamentosFormatados = agendamentos.map(agendamento => ({
-            ...agendamento,
-            cliente: agendamento.cliente || { id: null, nome: 'Cliente', foto: 'imagens/user.png' }
-        }));
+        const agendamentosFormatados = normalizeAgendamentosParaLista(agendamentos);
 
         res.json({
             success: true,
@@ -583,7 +571,10 @@ exports.listarAgendamentosConfirmados = async (req, res) => {
         servico,
         status,
         observacoes,
-        cliente:cliente_id (id, nome, foto),
+                cliente_nome,
+                cliente_email,
+                cliente_cpf,
+                cliente_telefone,
         manicure:manicure_id (id, nome, foto)
       `)
             .eq('manicure_id', userId)  // Alterado para pegar apenas os da manicure logada
@@ -592,11 +583,7 @@ exports.listarAgendamentosConfirmados = async (req, res) => {
 
         if (error) throw error;
 
-        // Garante que o objeto cliente está preenchido corretamente
-        const agendamentosFormatados = agendamentos.map(agendamento => ({
-            ...agendamento,
-            cliente: agendamento.cliente || { id: null, nome: 'Cliente', foto: 'imagens/user.png' }
-        }));
+        const agendamentosFormatados = normalizeAgendamentosParaLista(agendamentos);
 
         res.json({
             success: true,
@@ -626,7 +613,10 @@ exports.listarAgendamentosHistorico = async (req, res) => {
         servico,
         status,
         observacoes,
-        cliente:cliente_id (id, nome, foto),
+                cliente_nome,
+                cliente_email,
+                cliente_cpf,
+                cliente_telefone,
         manicure:manicure_id (id, nome, foto)
       `)
             .eq('manicure_id', userId)  // Alterado para pegar apenas os da manicure logada
@@ -635,11 +625,7 @@ exports.listarAgendamentosHistorico = async (req, res) => {
 
         if (error) throw error;
 
-        // Garante que o objeto cliente está preenchido corretamente
-        const agendamentosFormatados = agendamentos.map(agendamento => ({
-            ...agendamento,
-            cliente: agendamento.cliente || { id: null, nome: 'Cliente', foto: 'imagens/user.png' }
-        }));
+        const agendamentosFormatados = normalizeAgendamentosParaLista(agendamentos);
 
         res.json({
             success: true,
@@ -664,7 +650,7 @@ exports.atualizarStatusAgendamento = async (req, res) => {
     const manicureId = req.user.id;
 
     try {
-        // Verifica se o agendamento pertence à manicure e obtém dados do cliente
+        // Verifica se o agendamento pertence à manicure
         const { data: agendamento, error: agendamentoError } = await supabase
             .from('agendamentos')
             .select(`
@@ -672,7 +658,10 @@ exports.atualizarStatusAgendamento = async (req, res) => {
                 data_hora,
                 servico,
                 observacoes,
-                cliente:cliente_id(id, nome, email),
+                cliente_nome,
+                cliente_email,
+                cliente_cpf,
+                cliente_telefone,
                 manicure:manicure_id(nome)
             `)
             .eq('id', id)
@@ -703,30 +692,41 @@ exports.atualizarStatusAgendamento = async (req, res) => {
                 servico,
                 status,
                 observacoes,
-                cliente:cliente_id (id, nome, foto)
+                cliente_nome,
+                cliente_email,
+                cliente_cpf,
+                cliente_telefone
             `);
 
         if (updateError) throw updateError;
 
-        // Envia e-mail para o cliente quando o status é alterado
-        if (['confirmado', 'cancelado', 'concluido', 'recusado'].includes(status)) {
-            const statusEmailHtml = getStatusEmailTemplate(
-                agendamento.cliente.nome,
-                agendamento.manicure.nome,
+        if (agendamento.cliente_email && ['confirmado', 'cancelado', 'concluido', 'recusado'].includes(status)) {
+            const statusSubjectMap = {
+                confirmado: 'Agendamento confirmado - Pretty Nails',
+                cancelado: 'Agendamento cancelado - Pretty Nails',
+                concluido: 'Atendimento concluído - Pretty Nails',
+                recusado: 'Agendamento recusado - Pretty Nails'
+            };
+
+            const emailStatusHtml = getStatusEmailTemplate(
+                agendamento.cliente_nome,
+                agendamento.manicure?.nome || 'sua manicure',
                 agendamento.servico,
                 agendamento.data_hora,
                 status,
                 agendamento.observacoes
             );
-            
-            const emailSubject = `Agendamento ${status === 'concluido' ? 'Concluído' : status.charAt(0).toUpperCase() + status.slice(1)} - Pretty Nails`;
-            
-            sendEmail(agendamento.cliente.email, emailSubject, statusEmailHtml);
+
+            await sendEmail(
+                agendamento.cliente_email,
+                statusSubjectMap[status] || 'Atualização de agendamento - Pretty Nails',
+                emailStatusHtml
+            );
         }
 
         res.json({
             success: true,
-            agendamento: updated[0]
+            agendamento: normalizeAgendamento(updated[0])
         });
 
     } catch (error) {
