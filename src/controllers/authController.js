@@ -36,38 +36,24 @@ exports.signUp = async (req, res) => {
     const slugBase = slugify(nome)
     const slug = await gerarSlugUnico(supabase, slugBase)
 
+    // Cria usuário no Auth sem auto-confirmar o e-mail.
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email,
       password,
-      email_confirm: true,
-      user_metadata: { nome, slug }
+      email_confirm: false,
+      user_metadata: { nome, slug, telefone, estado, cidade }
     })
 
     if (authError) throw authError
     createdUserId = authData.user.id
 
-    const { data: userData, error: insertError } = await supabase
-      .from('manicures')
-      .insert({
-        id: createdUserId,
-        email,
-        nome: nome.trim(),
-        slug,
-        telefone: telefone.trim(),
-        estado: estado.trim(),
-        cidade: cidade.trim()
-      })
-      .select()
-
-    if (insertError) throw insertError
+    // Não inserir imediatamente na tabela `manicures` aqui.
+    // A criação do profile ficará a cargo do trigger no banco
+    // após confirmação de e-mail (email_confirmed_at).
 
     res.json({
       success: true,
-      message: 'Usuário cadastrado com sucesso!',
-      user: {
-        ...userData[0],
-        tipo: 'MANICURE'
-      }
+      message: 'Cadastro realizado. Verifique seu e-mail para confirmar sua conta.'
     })
 
   } catch (error) {
@@ -146,7 +132,33 @@ exports.login = async (req, res) => {
       .eq('id', data.user.id)
       .single()
 
-    if (profileError) throw profileError
+    let manicureProfile = userData
+
+    if (profileError || !manicureProfile) {
+      const metadata = data.user.user_metadata || {}
+      const nomeBase = metadata.nome || data.user.email?.split('@')[0] || 'manicure'
+      const slug = `${slugify(nomeBase)}-${data.user.id.slice(0, 8)}`
+
+      const { data: createdProfile, error: createProfileError } = await supabase
+        .from('manicures')
+        .insert({
+          id: data.user.id,
+          email: data.user.email,
+          nome: nomeBase,
+          telefone: metadata.telefone || null,
+          estado: metadata.estado || null,
+          cidade: metadata.cidade || null,
+          slug,
+          ativa: true,
+          bio: ''
+        })
+        .select()
+        .single()
+
+      if (createProfileError) throw createProfileError
+
+      manicureProfile = createdProfile
+    }
 
     res.json({
       success: true,
@@ -154,7 +166,7 @@ exports.login = async (req, res) => {
       refresh_token: data.session.refresh_token,
       user: {
         ...data.user,
-        ...userData,
+        ...manicureProfile,
         tipo: 'MANICURE'
       }
     })
