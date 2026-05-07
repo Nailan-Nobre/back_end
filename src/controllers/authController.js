@@ -50,18 +50,15 @@ exports.signUp = async (req, res) => {
     // Não inserir imediatamente na tabela `manicures` aqui.
     // A criação do profile ficará a cargo do trigger no banco
     // após confirmação de e-mail (email_confirmed_at).
-
-    // Tenta disparar o e-mail de confirmação para o usuário
-    try {
-      await supabase.auth.resend({ type: 'signup', email })
-    } catch (e) {
-      console.error('Falha ao enviar e-mail de confirmação automaticamente:', e)
-      // não falhar o cadastro por causa do email — apenas logamos
-    }
-
     res.json({
       success: true,
       message: 'Cadastro realizado. Verifique seu e-mail para confirmar sua conta.'
+    })
+
+    // Dispara o e-mail de confirmação fora do caminho crítico.
+    // Se isso falhar ou demorar, o cadastro já foi concluído com sucesso.
+    void supabase.auth.resend({ type: 'signup', email }).catch((e) => {
+      console.error('Falha ao enviar e-mail de confirmação automaticamente:', e)
     })
 
   } catch (error) {
