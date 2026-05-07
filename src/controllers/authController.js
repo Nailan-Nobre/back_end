@@ -1,4 +1,5 @@
 const supabase = require('../config/db')
+const emailService = require('../services/emailService')
 
 // Cadastro direto na tabela manicures
 exports.signUp = async (req, res) => {
@@ -35,30 +36,40 @@ exports.signUp = async (req, res) => {
 
     const slugBase = slugify(nome)
     const slug = await gerarSlugUnico(supabase, slugBase)
+    const frontendUrl = getFrontendUrl()
+    const redirectTo = `${frontendUrl}/cadastro-e-login/confirmacao.html`
 
-    // Cria usuário no Auth sem auto-confirmar o e-mail.
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+    // Gera link de confirmação e cria usuário no Auth.
+    const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+      type: 'signup',
       email,
       password,
-      email_confirm: false,
-      user_metadata: { nome, slug, telefone, estado, cidade }
+      options: {
+        data: { nome, slug, telefone, estado, cidade },
+        redirectTo
+      }
     })
 
-    if (authError) throw authError
-    createdUserId = authData.user.id
+    if (linkError) throw linkError
+    createdUserId = linkData?.user?.id || null
+
+    const actionLink = linkData?.properties?.action_link
+    if (!actionLink) {
+      throw new Error('Não foi possível gerar o link de confirmação do e-mail.')
+    }
 
     // Não inserir imediatamente na tabela `manicures` aqui.
     // A criação do profile ficará a cargo do trigger no banco
     // após confirmação de e-mail (email_confirmed_at).
+
+    const emailSent = await emailService.sendConfirmationEmail(email, nome.trim(), actionLink)
+    if (!emailSent) {
+      throw new Error('Conta criada, mas houve falha ao enviar o e-mail de confirmação. Tente novamente em instantes.')
+    }
+
     res.json({
       success: true,
       message: 'Cadastro realizado. Verifique seu e-mail para confirmar sua conta.'
-    })
-
-    // Dispara o e-mail de confirmação fora do caminho crítico.
-    // Se isso falhar ou demorar, o cadastro já foi concluído com sucesso.
-    void supabase.auth.resend({ type: 'signup', email }).catch((e) => {
-      console.error('Falha ao enviar e-mail de confirmação automaticamente:', e)
     })
 
   } catch (error) {
@@ -322,5 +333,9 @@ async function gerarSlugUnico(client, base) {
     tentativa += 1
     slug = `${base}-${tentativa}`
   }
+}
+
+function getFrontendUrl() {
+  return String(process.env.FRONTEND_URL || 'https://pretty-nails-app.vercel.app').replace(/\/$/, '')
 }
 

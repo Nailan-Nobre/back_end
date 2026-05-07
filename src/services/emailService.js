@@ -22,6 +22,24 @@ async function sendEmail(to, subject, html) {
 }
 
 module.exports = {
+  sendConfirmationEmail: async (userEmail, userName, actionLink) => {
+    const subject = 'Confirme seu cadastro - Pretty Nails';
+    const html = `
+      <h1>Bem-vinda ao Pretty Nails, ${userName}!</h1>
+      <p>Seu cadastro foi criado com sucesso.</p>
+      <p>Para ativar sua conta, clique no botão abaixo:</p>
+      <p>
+        <a href="${actionLink}" style="display:inline-block;padding:12px 20px;background:#ff5f8f;color:#fff;text-decoration:none;border-radius:8px;font-weight:700;">
+          Confirmar e-mail
+        </a>
+      </p>
+      <p>Se o botão não funcionar, copie e cole este link no navegador:</p>
+      <p>${actionLink}</p>
+    `;
+
+    return await sendEmail(userEmail, subject, html);
+  },
+
   sendNewAppointmentEmail: async (manicureEmail, clientName, appointmentDate, service) => {
     const subject = 'Novo Agendamento - Pretty Nails';
     const html = `
