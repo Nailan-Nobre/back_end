@@ -37,7 +37,7 @@ exports.signUp = async (req, res) => {
     const slugBase = slugify(nome)
     const slug = await gerarSlugUnico(supabase, slugBase)
     const frontendUrl = getFrontendUrl()
-    const redirectTo = `${frontendUrl}/cadastro-e-login/confirmacao.html`
+    const redirectTo = `${frontendUrl}/confirmacao.html`
 
     // Gera link de confirmação e cria usuário no Auth.
     const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
@@ -64,10 +64,17 @@ exports.signUp = async (req, res) => {
 
     const emailSent = await emailService.sendConfirmationEmail(email, nome.trim(), actionLink)
     if (!emailSent) {
-      throw new Error('Conta criada, mas houve falha ao enviar o e-mail de confirmação. Tente novamente em instantes.')
+      void supabase.auth.resend({ type: 'signup', email }).catch((e) => {
+        console.error('Falha ao enviar confirmação por fallback do Supabase:', e)
+      })
+
+      return res.json({
+        success: true,
+        message: 'Cadastro realizado. Se o e-mail não chegar em alguns minutos, use a opção de reenviar confirmação no login.'
+      })
     }
 
-    res.json({
+    return res.json({
       success: true,
       message: 'Cadastro realizado. Verifique seu e-mail para confirmar sua conta.'
     })
@@ -75,7 +82,10 @@ exports.signUp = async (req, res) => {
   } catch (error) {
     console.error("Erro no cadastro:", error)
 
-    if (createdUserId) {
+    const errorMessage = String(error?.message || '').toLowerCase()
+    const shouldRollbackUser = createdUserId && !errorMessage.includes('already registered')
+
+    if (shouldRollbackUser) {
       await supabase.auth.admin.deleteUser(createdUserId)
         .catch(e => console.error("Falha ao limpar usuário:", e))
     }

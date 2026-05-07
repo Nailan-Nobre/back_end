@@ -9,5 +9,5 @@ module.exports = {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASSWORD
   },
-  from: process.env.EMAIL_FROM || 'no-reply@prettynails.com'
+  from: process.env.EMAIL_FROM || process.env.EMAIL_USER || 'no-reply@prettynails.com'
 };
