@@ -70,10 +70,13 @@ exports.signUp = async (req, res) => {
     }
 
     if (error.message?.toLowerCase().includes('already registered')) {
-      return res.status(409).json({
-        success: false,
-        error: 'E-mail já cadastrado',
-        details: 'Erro ao processar cadastro'
+      void supabase.auth.resend({ type: 'signup', email }).catch((e) => {
+        console.error('Falha ao reenviar e-mail de confirmação para usuário já existente:', e)
+      })
+
+      return res.json({
+        success: true,
+        message: 'Já existe um cadastro com este e-mail. Verifique sua caixa de entrada para continuar.'
       })
     }
 
