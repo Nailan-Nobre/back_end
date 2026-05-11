@@ -6,7 +6,8 @@ const transporter = nodemailer.createTransport(emailConfig);
 async function sendEmail(to, subject, html) {
   try {
     const mailOptions = {
-      from: emailConfig.from,
+      from: emailConfig.auth?.user || emailConfig.from,
+      replyTo: emailConfig.auth?.user || emailConfig.from,
       to,
       subject,
       html

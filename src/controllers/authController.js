@@ -76,7 +76,7 @@ exports.signUp = async (req, res) => {
 
     return res.json({
       success: true,
-      message: 'Cadastro realizado. Verifique seu e-mail para confirmar sua conta.'
+      message: 'Cadastro realizado com sucesso. Você já pode usar a conta depois de confirmar seu e-mail.'
     })
 
   } catch (error) {
