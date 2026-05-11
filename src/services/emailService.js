@@ -5,9 +5,11 @@ const transporter = nodemailer.createTransport(emailConfig);
 
 async function sendEmail(to, subject, html) {
   try {
+    const senderAddress = emailConfig.auth?.user || emailConfig.from;
+
     const mailOptions = {
-      from: emailConfig.auth?.user || emailConfig.from,
-      replyTo: emailConfig.auth?.user || emailConfig.from,
+      from: senderAddress,
+      replyTo: senderAddress,
       to,
       subject,
       html
