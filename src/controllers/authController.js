@@ -1,5 +1,4 @@
 const supabase = require('../config/db')
-const emailService = require('../services/emailService')
 
 // Cadastro direto na tabela manicures
 exports.signUp = async (req, res) => {
@@ -34,72 +33,70 @@ exports.signUp = async (req, res) => {
       throw new Error('Cidade é obrigatória')
     }
 
-    const slugBase = slugify(nome)
-    const slug = await gerarSlugUnico(supabase, slugBase)
     const frontendUrl = getFrontendUrl()
     const redirectTo = `${frontendUrl}/confirmacao.html`
+    const supabaseUrl = process.env.SUPABASE_URL
+    const supabaseAnonKey = process.env.SUPABASE_KEY || process.env.SUPABASE_ANON_KEY
 
-    // Gera link de confirmação e cria usuário no Auth.
-    const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
-      type: 'signup',
-      email,
-      password,
-      options: {
-        data: { nome, slug, telefone, estado, cidade },
-        redirectTo
-      }
+    if (!supabaseUrl || !supabaseAnonKey) {
+      throw new Error('Variáveis do Supabase não configuradas para signup.')
+    }
+
+    const signupResponse = await fetch(`${supabaseUrl}/auth/v1/signup`, {
+      method: 'POST',
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${supabaseAnonKey}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json'
+      },
+      body: JSON.stringify({
+        email,
+        password,
+        options: {
+          data: {
+            nome,
+            telefone,
+            estado,
+            cidade,
+            tipo: 'MANICURE'
+          },
+          emailRedirectTo: redirectTo
+        }
+      })
     })
 
-    if (linkError) throw linkError
-    createdUserId = linkData?.user?.id || null
+    const signupText = await signupResponse.text()
+    let signupData = null
 
-    const actionLink = linkData?.properties?.action_link
-    if (!actionLink) {
-      throw new Error('Não foi possível gerar o link de confirmação do e-mail.')
+    if (signupText) {
+      try {
+        signupData = JSON.parse(signupText)
+      } catch (_error) {
+        signupData = { message: signupText }
+      }
     }
 
-    // Não inserir imediatamente na tabela `manicures` aqui.
-    // A criação do profile ficará a cargo do trigger no banco
-    // após confirmação de e-mail (email_confirmed_at).
+    if (!signupResponse.ok) {
+      const signupMessage = String(signupData?.msg || signupData?.error_description || signupData?.message || '').toLowerCase()
 
-    const emailSent = await emailService.sendConfirmationEmail(email, nome.trim(), actionLink)
-    if (!emailSent) {
-      void supabase.auth.resend({ type: 'signup', email }).catch((e) => {
-        console.error('Falha ao enviar confirmação por fallback do Supabase:', e)
-      })
+      if (signupMessage.includes('already registered') || signupMessage.includes('already exists')) {
+        return res.json({
+          success: true,
+          message: 'Já existe um cadastro com este e-mail. Verifique sua caixa de entrada para continuar.'
+        })
+      }
 
-      return res.json({
-        success: true,
-        message: 'Cadastro realizado. Se o e-mail não chegar em alguns minutos, use a opção de reenviar confirmação no login.'
-      })
+      throw new Error(signupData?.msg || signupData?.error_description || signupData?.message || 'Não foi possível criar o cadastro no Supabase.')
     }
 
-    return res.json({
+    res.json({
       success: true,
-      message: 'Cadastro realizado com sucesso. Você já pode usar a conta depois de confirmar seu e-mail.'
+      message: 'Cadastro realizado com sucesso. Verifique seu e-mail para confirmar sua conta.'
     })
 
   } catch (error) {
     console.error("Erro no cadastro:", error)
-
-    const errorMessage = String(error?.message || '').toLowerCase()
-    const shouldRollbackUser = createdUserId && !errorMessage.includes('already registered')
-
-    if (shouldRollbackUser) {
-      await supabase.auth.admin.deleteUser(createdUserId)
-        .catch(e => console.error("Falha ao limpar usuário:", e))
-    }
-
-    if (error.message?.toLowerCase().includes('already registered')) {
-      void supabase.auth.resend({ type: 'signup', email }).catch((e) => {
-        console.error('Falha ao reenviar e-mail de confirmação para usuário já existente:', e)
-      })
-
-      return res.json({
-        success: true,
-        message: 'Já existe um cadastro com este e-mail. Verifique sua caixa de entrada para continuar.'
-      })
-    }
 
     if (error.message?.toLowerCase().includes('rate limit')) {
       return res.status(429).json({
