@@ -1,5 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const { createClient } = require('@supabase/supabase-js');
+const { ensureAvatarBucket, AVATAR_BUCKET } = require('../services/storageService');
 require('dotenv').config();
 
 const supabase = createClient(
@@ -36,12 +37,14 @@ exports.uploadImagem = async (req, res) => {
     const parsed = parseBase64Image(image);
     if (!parsed) return res.status(400).json({ error: 'Formato da imagem inválido.' });
 
+    await ensureAvatarBucket();
+
     // 1. Deletar foto antiga se existir
     if (fotoAntiga && !fotoAntiga.includes('imagens/user.png')) {
-      const path = fotoAntiga.split('/storage/v1/object/public/avatars/')[1]; // Excluindo o caminho correto
+      const path = fotoAntiga.split(`/storage/v1/object/public/${AVATAR_BUCKET}/`)[1]; // Excluindo o caminho correto
       const { error } = await supabase
         .storage
-        .from('avatars')
+        .from(AVATAR_BUCKET)
         .remove([path]);  // Deletar o arquivo antigo
 
       if (error) {
@@ -54,7 +57,7 @@ exports.uploadImagem = async (req, res) => {
     const fileName = `${userId}/${uuidv4()}.${parsed.extension}`;
     const { error: uploadError } = await supabase
       .storage
-      .from('avatars')
+      .from(AVATAR_BUCKET)
       .upload(fileName, parsed.buffer, {
         contentType: parsed.contentType,
         upsert: false,  // Use `upsert: false` para garantir que a imagem não seja substituída sem controle
@@ -69,7 +72,7 @@ exports.uploadImagem = async (req, res) => {
     // 3. Obter URL pública da nova imagem
     const { data: { publicUrl } } = supabase
       .storage
-      .from('avatars')
+      .from(AVATAR_BUCKET)
       .getPublicUrl(fileName);
 
     return res.status(200).json({ url: publicUrl });
